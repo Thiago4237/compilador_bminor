@@ -1,0 +1,29 @@
+Algorithm: class = {
+    name: string;
+
+    init: function void (n: string) = {
+        name = n;
+    }
+
+    run: function void ();
+}
+
+Sieve: class extends Algorithm = {
+    limit: integer;
+
+    init: function void (n: integer) = {
+        SUPER("sieve");
+        limit = n;
+    }
+
+    run: function void () = {
+        print name;
+        print limit;
+    }
+}
+
+main: function void () = {
+    a: Algorithm;
+    a = new Sieve(100);
+    a.run();
+}

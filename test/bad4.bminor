@@ -1,0 +1,4 @@
+/* Function ending with semicolon */
+main: Function integer() = {
+    return 1;
+};
