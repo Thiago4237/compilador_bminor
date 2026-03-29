@@ -1,7 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Iterator, Optional, List, Union
-import re
+from typing import Any, Optional, List, Union
 
 # ===================================================
 # AST (dataclasses)
@@ -31,7 +30,11 @@ class FuncType(Type):
 	#           |  FUNCTION type_array_sized '(' opt_param_list ')'
 	ret: Type
 	params: List["Param"]
-	
+
+@dataclass(frozen=True)
+class ClassType(Type):
+	name: str
+
 @dataclass(frozen=True)
 class Param:
 	name: str
@@ -58,7 +61,41 @@ class DeclInit(Decl):
 	name: str
 	typ: Type
 	init: Any  # Expr | List[Expr] | List[Stmt]
-	
+
+@dataclass
+class DeclClass(Decl):
+	name:    str
+	parent:  Optional[str]
+	members: List["ClassMember"]
+
+# ---------- OOP ----------
+ 
+@dataclass
+class AccessModifier:
+	kind: str  # 'public', 'private', 'protected'
+ 
+@dataclass
+class ClassMember:
+	modifier: Optional[AccessModifier]
+	decl:     Any
+ 
+@dataclass
+class ConstructorDecl(Decl):
+	params: List[Param]
+	body:   List
+ 
+@dataclass
+class GetterDecl(Decl):
+	name: str
+	ret:  Type
+	body: List
+ 
+@dataclass
+class SetterDecl(Decl):
+	name:  str
+	param: Param
+	body:  List
+
 # ---------- Stmt ----------
 class Stmt: ...
 
@@ -95,7 +132,15 @@ class For(Stmt):
 class WhileStmt(Stmt):
 	cond: Optional["Expr"]
 	body: Stmt
-	
+
+@dataclass
+class Break(Stmt):
+	pass
+ 
+@dataclass
+class Continue(Stmt):
+	pass
+
 # ---------- Expr ----------
 class Expr: ...
 
@@ -140,27 +185,17 @@ class PostfixOp(Expr):
 	op: str  # INC/DEC
 	expr: Expr
 	
-
 @dataclass
 class PrefixOp(Expr):
 	expr: Expr
 	op: str  # INC/DEC
  
+# Operador ternario
 @dataclass
-class Break(Stmt):
-    pass
-
-@dataclass
-class Continue(Stmt):
-    pass
-
-@dataclass
-class DeclClass(Decl):
-    # ID ':' CLASS '=' '{' member_list '}'
-    # ID ':' CLASS EXTENDS ID '=' '{' member_list '}'
-    name:    str
-    parent:  Optional[str]   # None si no hay extends
-    members: List[Decl]      # DeclTyped | DeclInit igual que el programa
+class TernaryOp(Expr):
+    cond:      Expr
+    then_val:  Expr
+    else_val:  Expr
 
 @dataclass
 class FieldAccess(Expr):
@@ -173,7 +208,3 @@ class NewObject(Expr):
     # NEW ID '(' opt_expr_list ')'
     cls:  str
     args: List[Expr]
-
-@dataclass(frozen=True)
-class ClassType(Type):
-    name: str

@@ -1,0 +1,386 @@
+prog ::= decl_list 'EOF'
+
+/* ============================================================================ */
+/*                            DECLARACIONES                                     */
+/* ============================================================================ */
+
+decl_list ::= /* epsilon */
+    | decl decl_list
+    | classDecl decl_list
+
+decl ::= 'ID' ':' type_simple ';'
+    | 'ID' ':' type_array_sized ';'
+    | 'ID' ':' type_func ';'
+    | decl_init
+
+decl_init ::= 'ID' ':' type_simple '=' expr ';'
+    | 'ID' ':' type_array_sized '=' '{' opt_expr_list '}' ';'
+    | 'ID' ':' type_func '=' '{' opt_stmt_list '}'
+
+/* ============================================================================ */
+/*                              STATEMENTS                                      */
+/* ============================================================================ */
+
+opt_stmt_list ::= /* epsilon */
+    | stmt_list
+
+stmt_list ::= stmt
+    | stmt stmt_list
+
+/* ---------------------------------------------------------------------------- */
+/* Statements abiertos vs cerrados                                             */
+/* Solución al problema del "dangling else":                                   */
+/* - closed_stmt: tienen estructura completa (if-else, loops con cuerpo)       */
+/* - open_stmt: pueden quedar "abiertos" (if sin else)                         */
+/* ---------------------------------------------------------------------------- */
+
+stmt ::= open_stmt
+    | closed_stmt
+
+closed_stmt ::= if_stmt_closed
+    | for_stmt_closed
+    | while_stmt_closed
+    | simple_stmt
+
+open_stmt ::= if_stmt_open
+    | for_stmt_open
+    | while_stmt_open
+
+/* ---------------------------------------------------------------------------- */
+/* Condicional IF                                                               */
+/* ---------------------------------------------------------------------------- */
+
+if_cond ::= 'IF' '(' opt_expr ')'
+if_stmt_closed ::= if_cond closed_stmt 'ELSE' closed_stmt
+if_stmt_open ::= if_cond stmt
+    | if_cond closed_stmt 'ELSE' if_stmt_open
+
+
+/* ---------------------------------------------------------------------------- */
+/* Ciclo FOR                                                                    */
+/* Sintaxis: for (init; condition; increment) body                              */
+/* ---------------------------------------------------------------------------- */
+
+for_header ::= 'FOR' '(' opt_expr ';' opt_expr ';' opt_expr ')'
+for_stmt_open ::= for_header open_stmt
+for_stmt_closed ::= for_header closed_stmt
+
+
+/* ---------------------------------------------------------------------------- */
+/* Ciclo WHILE [EXTENSIÓN B-Minor+]                                             */
+/* Sintaxis: while (condition) body                                             */
+/* ---------------------------------------------------------------------------- */
+
+while_header ::= 'WHILE' '(' expr ')'
+while_stmt_open ::= while_header open_stmt
+while_stmt_closed ::= while_header closed_stmt
+
+/* ---------------------------------------------------------------------------- */
+/* Simple Statements (no recursivos)                                            */
+/* ---------------------------------------------------------------------------- */
+
+simple_stmt ::= print_stmt
+    | return_stmt
+    | block_stmt
+    | decl
+    | expr ';'
+
+print_stmt ::= 'PRINT' opt_expr_list ';'
+
+return_stmt ::= 'RETURN' opt_expr ';'
+
+block_stmt ::= '{' stmt_list '}'
+
+/* ============================================================================ */
+/*                              EXPRESIONES                                     */
+/* ============================================================================ */
+
+opt_expr_list ::= /* epsilon */
+    | expr_list
+
+expr_list ::= expr
+    | expr ',' expr_list
+
+opt_expr ::= /* epsilon */
+    | expr
+
+/* ---------------------------------------------------------------------------- */
+/* Jerarquía de precedencia de operadores (de menor a mayor):                  */
+/*                                                                              */
+/* expr1:  asignación (=, +=, -=, *=, /=) y ternario (?:)     [DERECHA]        */
+/* expr2:  OR lógico (||)                                      [IZQUIERDA]      */
+/* expr3:  AND lógico (&&)                                     [IZQUIERDA]      */
+/* expr4:  comparación (==, !=, <, <=, >, >=)                  [IZQUIERDA]      */
+/* expr5:  suma y resta (+, -)                                 [IZQUIERDA]      */
+/* expr6:  multiplicación, división, módulo (*, /, %)          [IZQUIERDA]      */
+/* expr7:  exponenciación (^)                                  [IZQUIERDA]      */
+/* expr8:  unarios prefijos (-, !, ++, --)                     [DERECHA]        */
+/* expr9:  unarios postfijos (++, --)                          [IZQUIERDA]      */
+/* group:  primarias (llamadas, índices, literales)                             */
+/* ---------------------------------------------------------------------------- */
+
+expr ::= expr1
+    
+/* ---------------------------------------------------------------------------- */
+/* Nivel 1: Asignación y operador ternario [EXTENSIÓN B-Minor+]                */
+/* Asociatividad: derecha                                                       */
+/* ---------------------------------------------------------------------------- */
+
+expr1 ::= lval '=' expr1
+    | lval asignacion_comp expr1      
+    | expr2 '?' expr1 ':' expr1         /* Operador ternario: cond ? true_val : false_val */
+    | expr2
+
+/* Operadores de asignación compuesta [EXTENSIÓN B-Minor+] */
+asignacion_comp ::= '+=' | '-=' | '*=' | '/='
+
+/* L-values: expresiones que pueden aparecer a la izquierda de una asignación */
+lval ::= 'ID'
+    | 'ID' index
+    | member_access
+    
+/* ---------------------------------------------------------------------------- */
+/* Nivel 2: OR lógico (||)                                                      */
+/* Asociatividad: izquierda                                                     */
+/* ---------------------------------------------------------------------------- */
+
+expr2 ::= expr2 'LOR' expr3
+    | expr3
+
+/* ---------------------------------------------------------------------------- */
+/* Nivel 3: AND lógico (&&)                                                     */
+/* Asociatividad: izquierda                                                     */
+/* ---------------------------------------------------------------------------- */
+
+expr3 ::= expr3 'LAND' expr4
+    | expr4
+
+/* ---------------------------------------------------------------------------- */
+/* Nivel 4: Operadores de comparación                                           */
+/* Asociatividad: izquierda                                                     */
+/* ---------------------------------------------------------------------------- */
+
+expr4 ::= expr4 'EQ' expr5
+    | expr4 'NE' expr5
+    | expr4 'LT' expr5
+    | expr4 'LE' expr5
+    | expr4 'GT' expr5
+    | expr4 'GE' expr5
+    | expr5
+
+/* ---------------------------------------------------------------------------- */
+/* Nivel 5: Suma y resta                                                        */
+/* Asociatividad: izquierda                                                     */
+/* ---------------------------------------------------------------------------- */
+
+expr5 ::= expr5 '+' expr6
+    | expr5 '-' expr6
+    | expr6
+
+/* ---------------------------------------------------------------------------- */
+/* Nivel 6: Multiplicación, división y módulo                                   */
+/* Asociatividad: izquierda                                                     */
+/* ---------------------------------------------------------------------------- */
+
+expr6 ::= expr6 '*' expr7
+    | expr6 '/' expr7
+    | expr6 '%' expr7
+    | expr7
+
+/* ---------------------------------------------------------------------------- */
+/* Nivel 7: Exponenciación                                                      */
+/* Asociatividad: izquierda                                                     */
+/* ---------------------------------------------------------------------------- */
+
+expr7 ::= expr7 '^' expr8
+    | expr8
+
+/* ---------------------------------------------------------------------------- */
+/* Nivel 8: Operadores unarios prefijos [EXTENSIÓN B-Minor+: INC/DEC]          */
+/* Asociatividad: derecha                                                       */
+/* ---------------------------------------------------------------------------- */
+
+expr8 ::= '-' expr8
+    | 'NOT' expr8
+    | 'INC' expr8
+    | 'DEC' expr8
+    | expr9
+
+/* ---------------------------------------------------------------------------- */
+/* Nivel 9: Operadores unarios postfijos [EXTENSIÓN B-Minor+: INC/DEC]         */
+/* Asociatividad: izquierda                                                     */
+/* ---------------------------------------------------------------------------- */
+
+expr9 ::= expr9 'INC'
+    | expr9 'DEC'
+    | group
+    | postfix_extension
+
+/* ---------------------------------------------------------------------------- */
+/* Expresiones primarias y de acceso                                            */
+/* ---------------------------------------------------------------------------- */
+
+group ::= '(' expr ')'
+    | 'ID' '(' opt_expr_list ')'
+    | 'ID' index
+    | member_access
+    | member_access_call
+    | factor
+    | super_call
+
+index_list ::= index_list index
+		| index
+
+/* Índices para arreglos multidimensionales */
+index ::= '[' expr ']'
+
+/* Literales y valores primitivos */
+factor ::= 'ID'
+    | 'INTEGER_LITERAL'
+    | 'FLOAT_LITERAL'
+    | 'CHAR_LITERAL'
+    | 'STRING_LITERAL'
+    | 'TRUE'
+    | 'FALSE'
+    | 'THIS'   /* [EXTENSIÓN OOP] Referencia al objeto actual */
+    | 'SUPER'
+
+/* ============================================================================ */
+/*                          TIPOS DE DATOS                                      */
+/* ============================================================================ */
+
+/* ---------------------------------------------------------------------------- */
+/* Tipos simples [EXTENSIÓN B-Minor+: ID para clases personalizadas]           */
+/* ---------------------------------------------------------------------------- */
+
+type_simple ::= 'INTEGER'
+    | 'FLOAT'
+    | 'BOOLEAN'
+    | 'CHAR'
+    | 'STRING'
+    | 'VOID'
+    | 'ID'    /* Permite usar nombres de clases como tipos */
+
+
+/* ---------------------------------------------------------------------------- */
+/* Tipos arreglo (sin tamaño especificado)                                      */
+/* ---------------------------------------------------------------------------- */
+
+type_array ::= 'ARRAY' '[' ']' type_simple
+    | 'ARRAY' '[' ']' type_array
+
+/* ---------------------------------------------------------------------------- */
+/* Tipos arreglo con tamaño (para declaraciones)                                */
+/* ---------------------------------------------------------------------------- */
+
+type_array_sized ::= 'ARRAY' index type_simple
+    | 'ARRAY' index type_array_sized
+
+/* ---------------------------------------------------------------------------- */
+/* Tipos función                                                                */
+/* ---------------------------------------------------------------------------- */
+
+type_func ::= 'FUNCTION' type_simple '(' opt_param_list ')'
+    | 'FUNCTION' type_array_sized '(' opt_param_list ')'
+
+/* ---------------------------------------------------------------------------- */
+/* Parámetros de función                                                        */
+/* ---------------------------------------------------------------------------- */
+
+opt_param_list ::= /* epsilon */
+    | param_list
+
+param_list ::= param
+    | param_list ',' param
+
+param ::= 'ID' ':' type_simple
+    | 'ID' ':' type_array
+    | 'ID' ':' type_array_sized
+    
+/* ============================================================================ */
+/*            PROGRAMACIÓN ORIENTADA A OBJETOS [EXTENSIÓN B-Minor+]             */
+/* ============================================================================ */
+
+/* ---------------------------------------------------------------------------- */
+/* Modificadores de acceso para encapsulamiento                                 */
+/* ---------------------------------------------------------------------------- */
+
+access_modifier ::= 'PUBLIC' | 'PRIVATE' | 'PROTECTED'
+
+/* ---------------------------------------------------------------------------- */
+/* Declaración de clases                                                        */
+/* Sintaxis: ClassName : CLASS = { miembros }                                   */
+/* ---------------------------------------------------------------------------- */
+
+classDecl ::= 'ID' ':' 'CLASS' '=' '{' class_body '}'
+    | 'ID' ':' 'CLASS' 'EXTENDS' 'ID' '=' '{' class_body '}'
+
+
+class_body ::= /* epsilon */
+    | class_member class_body
+
+/* ---------------------------------------------------------------------------- */
+/* Miembros de clase                                                            */
+/* ---------------------------------------------------------------------------- */
+
+class_member ::= decl                          /* Miembro público por defecto */
+    | access_modifier decl                     /* Miembro con visibilidad */
+    | constructor_decl                         /* Constructor público */
+    | access_modifier constructor_decl         /* Constructor con visibilidad */
+    | getter_decl                              /* Getter público */
+    | access_modifier getter_decl              /* Getter con visibilidad */
+    | setter_decl                              /* Setter público */
+    | access_modifier setter_decl              /* Setter con visibilidad */
+
+/* ---------------------------------------------------------------------------- */
+/* Constructor                                                                  */
+/* Sintaxis: CONSTRUCTOR(params) = { body }                                     */
+/* ---------------------------------------------------------------------------- */
+
+constructor_decl ::= 'CONSTRUCTOR' '(' opt_param_list ')' '=' '{' opt_stmt_list '}'
+
+/* ---------------------------------------------------------------------------- */
+/* Getters y Setters [EXTENSIÓN OOP]                                            */
+/* Permiten encapsular el acceso a propiedades                                  */
+/* ---------------------------------------------------------------------------- */
+
+getter_decl ::= 'GET' 'ID' '(' ')' ':' type_simple '=' '{' opt_stmt_list '}'
+
+setter_decl ::= 'SET' 'ID' '(' param ')' ':' 'VOID' '=' '{' opt_stmt_list '}'
+
+/* ---------------------------------------------------------------------------- */
+/* Acceso a miembros de objetos                                                 */
+/* Permite: obj.campo, obj.campo.subcampo, obj.array[index], etc.              */
+/* ---------------------------------------------------------------------------- */
+
+member_access ::= 'ID' '.' 'ID'
+    | member_access '.' 'ID'
+    | member_access index
+
+member_access_call ::= member_access '(' opt_expr_list ')'
+
+/* ---------------------------------------------------------------------------- */
+/* Extensiones postfijas                                                        */
+/* ---------------------------------------------------------------------------- */
+
+postfix_extension ::= new_expr
+    | postfix_extension '.' 'ID'
+    | postfix_extension '(' opt_expr_list ')'
+    | postfix_extension index
+
+/* ---------------------------------------------------------------------------- */
+/* Instanciación de objetos                                                     */
+/* ---------------------------------------------------------------------------- */
+
+new_expr ::= 'NEW' 'ID' '(' opt_expr_list ')'
+
+super_call ::= 'SUPER' '(' opt_expr_list ')'
+
+
+/* ------------------------------ mod sugerida profesor ----------------------------*/
+classDecl :: = 'ID' ':' 'CLASS' opt_extend '=' '{' class_body '}'
+opt_extend ::= /* epsilon */
+    | 'EXTENDS' 'ID'
+
+
+/* ------------------------------ fin mod sugerida profesor ----------------------------*/

@@ -16,8 +16,10 @@ class Lexer(sly.Lexer):
         ARRAY, AUTO, BOOLEAN, CHAR, ELSE, FALSE, FLOAT, 
         FOR, FUNCTION, IF, INTEGER, PRINT, RETURN, STRING, 
         TRUE, VOID, WHILE, CLASS, THIS, SUPER, EXTENDS, NEW,
-        
         CONSTANT, BREAK, CONTINUE,
+        
+        # OOP
+        PUBLIC, PRIVATE, PROTECTED, CONSTRUCTOR, GET, SET,
         
         # OPERADORES DE RELACION 
         LT, LE, GT, GE, EQ, NE, LAND, LOR, LNOT,
@@ -51,7 +53,6 @@ class Lexer(sly.Lexer):
     DIVEQ = r'/='
     MODEQ = r'%='
     POWEQ = r'\^='
-    
     INC = r'\+\+'
     DEC = r'--'
     
@@ -85,7 +86,6 @@ class Lexer(sly.Lexer):
     ID['float'] = FLOAT
     ID['for'] = FOR
     ID['function'] = FUNCTION
-    #ID['func'] = FUNCTION
     ID['if'] = IF
     ID['integer'] = INTEGER
     ID['print'] = PRINT
@@ -102,8 +102,13 @@ class Lexer(sly.Lexer):
     ID['constant'] = CONSTANT
     ID['break']    = BREAK
     ID['continue'] = CONTINUE
+    ID['public'] = PUBLIC
+    ID['private'] = PRIVATE
+    ID['protected'] = PROTECTED
+    ID['constructor'] = CONSTRUCTOR
+    ID['get'] = GET
+    ID['set'] = SET
     
-
     def error(self, t):
         print(f"Caracter ilegal '{t.value[0]}' en la linea {self.lineno}")
         self.index += 1
@@ -161,6 +166,5 @@ if __name__ == '__main__':
         print(f'usage: python lexer.py <filename>')
         raise SyntaxError()
 
-    txt = open(sys.argv[1], encoding='utf-8').read()
-    tokenize(txt)
+    tokenize(sys.argv[1])
     

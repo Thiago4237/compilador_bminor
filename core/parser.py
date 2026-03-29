@@ -68,19 +68,101 @@ class Parser(sly.Parser):
 	def decl(self, p):
 		return p.decl_init
 
+	# Declaración con tipo clase
+	@_("ID ':' type_class ';'")
+	def decl(self, p):
+		return DeclTyped(p.ID, p.type_class)
+ 
+	@_("ID ':' type_class '=' expr ';'")
+	def decl_init(self, p):
+		return DeclInit(p.ID, p.type_class, p.expr)
+
 	# =================================================
 	# DECLARACIONES CLASES
 	# =================================================		
-	@_("ID ':' CLASS '=' '{' decl_list '}'")
+	@_("ID ':' CLASS opt_extend '=' '{' class_body '}'")
 	def decl(self, p):
-		return DeclClass(p.ID, None, p.decl_list)
+		return DeclClass(p.ID, p.opt_extend, p.class_body)
+ 
+	@_("ID")
+	def opt_extend(self, p):
+		return p.ID
+ 
+	@_("empty")
+	def opt_extend(self, p):
+		return None
 
-	@_("ID ':' CLASS EXTENDS ID '=' '{' decl_list '}'")
-	def decl(self, p):
-		return DeclClass(p.ID0, p.ID1, p.decl_list)
-	
-  
-	# === DECLARACIONES con inicialización
+	# -------------------------------------------------
+	# CLASS BODY
+	# -------------------------------------------------
+ 
+	@_("class_member class_body")
+	def class_body(self, p):
+		return [p.class_member] + p.class_body
+ 
+	@_("empty")
+	def class_body(self, p):
+		return []
+
+	# -------------------------------------------------
+	# CLASS MEMBER
+	# -------------------------------------------------
+ 
+	@_("decl")
+	@_("constructor_decl")
+	@_("getter_decl")
+	@_("setter_decl")
+	def class_member(self, p):
+		return ClassMember(None, p[0])
+ 
+	@_("access_modifier decl")
+	@_("access_modifier constructor_decl")
+	@_("access_modifier getter_decl")
+	@_("access_modifier setter_decl")
+	def class_member(self, p):
+		return ClassMember(p.access_modifier, p[1])
+
+	# -------------------------------------------------
+	# ACCESS MODIFIER
+	# -------------------------------------------------
+ 
+	@_("PUBLIC")
+	@_("PRIVATE")
+	@_("PROTECTED")
+	def access_modifier(self, p):
+		return AccessModifier(p[0].lower())
+
+	# -------------------------------------------------
+	# CONSTRUCTOR
+	# -------------------------------------------------
+ 
+	@_("CONSTRUCTOR '(' opt_param_list ')' '=' '{' opt_stmt_list '}'")
+	def constructor_decl(self, p):
+		return ConstructorDecl(p.opt_param_list, p.opt_stmt_list)
+
+	# -------------------------------------------------
+	# GETTER
+	# -------------------------------------------------
+ 
+	@_("GET ID '(' ')' ':' type_simple '=' '{' opt_stmt_list '}'")
+	def getter_decl(self, p):
+		return GetterDecl(p.ID, p.type_simple, p.opt_stmt_list)
+ 
+	@_("GET ID '(' ')' ':' type_array_sized '=' '{' opt_stmt_list '}'")
+	def getter_decl(self, p):
+		return GetterDecl(p.ID, p.type_array_sized, p.opt_stmt_list)
+
+	# -------------------------------------------------
+	# SETTER
+	# -------------------------------------------------
+ 
+	@_("SET ID '(' param ')' ':' VOID '=' '{' opt_stmt_list '}'")
+	def setter_decl(self, p):
+		return SetterDecl(p.ID, p.param, p.opt_stmt_list)
+
+	# =================================================
+	# DECLARACIONES con inicialización
+	# =================================================
 	
 	@_("ID ':' type_simple '=' expr ';'")
 	def decl_init(self, p):
@@ -280,6 +362,11 @@ class Parser(sly.Parser):
 	@_("postfix '.' ID MODEQ  expr1")
 	def expr1(self, p):
 		return Assign(FieldAccess(p.postfix, p.ID), p.expr1)		
+
+	# Operador ternario: cond ? then : else
+	@_("expr2 '?' expr1 ':' expr1")
+	def expr1(self, p):
+		return TernaryOp(p.expr2, p.expr10, p.expr11)
 
 	@_("expr2")
 	def expr1(self, p):
@@ -492,7 +579,15 @@ class Parser(sly.Parser):
 	@_("FUNCTION type_array_sized '(' opt_param_list ')'")
 	def type_func(self, p):
 		return FuncType(p[1], p[3])     # FUNCTION=0  tipo=1  (=2  params=3  )=4
-		
+	
+	@_("ID")
+	def type_class(self, p):
+		return ClassType(p.ID)
+ 
+	# =================================================
+	# PARÁMETROS
+	# =================================================
+ 
 	@_("empty")
 	def opt_param_list(self, p):
 		return []
@@ -521,21 +616,6 @@ class Parser(sly.Parser):
 	def param(self, p):
 		return Param(p.ID, p.type_array_sized)
 		
-
-	@_("ID")
-	def type_class(self, p):
-		return ClassType(p.ID)
-
-	# extender las declaraciones para aceptar type_class
-	@_("ID ':' type_class ';'")
-	def decl(self, p):
-		return DeclTyped(p.ID, p.type_class)
-
-	@_("ID ':' type_class '=' expr ';'")
-	def decl_init(self, p):
-		return DeclInit(p.ID, p.type_class, p.expr)
-
-	# parámetros también pueden ser de tipo clase
 	@_("ID ':' type_class")
 	def param(self, p):
 		return Param(p.ID, p.type_class)
@@ -549,15 +629,8 @@ class Parser(sly.Parser):
 		pass
 		
 	def error(self, p):
-		# llama la funcion que define de forma clara el error
-		# info = define_error(p)
-		# print(info)
 		define_error(p, parser=self)
-  
-		# lineno = p.lineno if p else 'EOF'
-		# value = repr(p.value) if p else 'EOF'
-		# print(p)
-		# error(f'Syntax error at {value}', lineno)
+
 		
 # ===================================================
 # Utilidad: convertir algo en bloque si no lo es
@@ -588,7 +661,10 @@ def parse(txt):
 	p = Parser()
 	return p.parse(l.tokenize(txt))
 	
-	
+
+# ===================================================
+# __main__
+# ===================================================
 if __name__ == '__main__':
 	
 	import sys, os
