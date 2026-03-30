@@ -1,4 +1,4 @@
 /* Function ending with semicolon */
-main: Function integer() = {
+main: func integer() = {
     return 1;
 };

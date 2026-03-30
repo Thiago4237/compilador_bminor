@@ -165,11 +165,11 @@ Rule 161   empty -> <empty>
 
 Unused terminals:
 
-    EXTENDS
-    DOT
     POWEQ
-    LNOT
+    DOT
+    EXTENDS
     AUTO
+    LNOT
 
 Terminals, with rules where they appear:
 
