@@ -84,10 +84,10 @@ class Parser(sly.Parser):
 	def decl(self, p):
 		return DeclClass(p.ID, p.opt_extend, p.class_body)
  
-	@_("ID")
+	@_("EXTENDS ID")
 	def opt_extend(self, p):
 		return p.ID
- 
+
 	@_("empty")
 	def opt_extend(self, p):
 		return None
@@ -467,13 +467,23 @@ class Parser(sly.Parser):
 	def postfix(self, p):
 		return PostfixOp('DEC', p.postfix)
 
-	@_("postfix '.' ID '(' opt_expr_list ')'")
+	@_("postfix DOT ID '(' opt_expr_list ')'")
 	def postfix(self, p):
 		return Call(p.ID, p.opt_expr_list, obj=FieldAccess(p.postfix, p.ID))
 
-	@_("postfix '.' ID")
+	@_("postfix DOT ID")
 	def postfix(self, p):
 		return FieldAccess(p.postfix, p.ID)
+
+	# Y las asignaciones a campo:
+	@_("postfix DOT ID '='    expr1")
+	@_("postfix DOT ID ADDEQ  expr1")
+	@_("postfix DOT ID SUBEQ  expr1")
+	@_("postfix DOT ID MULEQ  expr1")
+	@_("postfix DOT ID DIVEQ  expr1")
+	@_("postfix DOT ID MODEQ  expr1")
+	def expr1(self, p):
+		return Assign(FieldAccess(p.postfix, p.ID), p.expr1)
 
 	@_("prefix")
 	def primary(self, p):
