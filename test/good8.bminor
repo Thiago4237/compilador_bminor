@@ -1,14 +1,21 @@
-x: integer = 65;
-y: char = 'A';
+/* Sum of even numbers in an array */
 
-f: integer = 0;
+SIZE: integer = 10;
+numbers: array [SIZE] integer = {0, 3, 5, 7, 9, 2, 4, 6, 8, 1};
 
-writechar: function array [5] void ( c: char );
-a: integer = 65;
+sum_even: function integer (arr: array [] integer, size: integer) = {
+    sum: integer = 0;
+    i: integer;
+    for (i = 0; i < size; i++) {
+        if (arr[i] % 2 == 0) {
+            sum = sum + arr[i];
+        }
+    }
+    return sum;
+}
 
-b: array [2] boolean = {true,false};
-x: integer = 0;
-x: integer = b[0];      // error: x is not a boolean!
-
-x: integer = 0;
-y: float = x;  // error: integer types can not be implicitly converted to float
+main: function integer () = {
+    even_sum: integer = sum_even(numbers, SIZE);
+    print "The sum of even numbers is ", even_sum, "\n";
+    return 0;
+}

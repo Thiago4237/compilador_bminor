@@ -1,12 +1,11 @@
 /* Finding max in array */
 
 SIZE: integer = 10;
-numbers: array [SIZE] integer = {0, 3, 5, 7, 9, 2, 4, 6, 8, 1};
 
 find_max: function integer (arr: array [] integer, size: integer) = {
-    max: integer = arr[0];
+    max: integer = arr["first"];
     i: integer;
-    for (i = 1; i < size; i++) {
+    for (i = 1; i - size; i++) {
         if (arr[i] > max) {
             max = arr[i];
         }
@@ -15,7 +14,8 @@ find_max: function integer (arr: array [] integer, size: integer) = {
 }
 
 main: function integer () = {
-    max: integer = find_max(numbers, SIZE);
+    numbers: array [SIZE] integer = {true, 3.14, 5, 7, 9, 'c', 4, 6, 8, 1};
+    max: integer = find_max(numbers, SIZE, 1);
     print "The maximum number is ", max, "\n";
     return 0;
 }

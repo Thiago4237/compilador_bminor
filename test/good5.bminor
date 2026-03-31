@@ -1,11 +1,16 @@
-a : array [10] array [10] integer;
-a : integer;
+/* Conditions */
 
-printarray: function void ( a: array [] integer ) = {
-	i: integer;
-	{
-	    for(i=0; i < array_length(a); i++) {
-		    print a[i], "\n";
-	    }
-    }
+var: integer;
+
+main: function void () = {
+    if (var == 0)
+        var++;
+    else
+        var--;
+
+    new: boolean;
+    if (new)
+        var++;
+    else
+        var--;
 }

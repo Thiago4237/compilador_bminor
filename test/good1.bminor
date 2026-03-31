@@ -1,3 +1,9 @@
-str : string = "Hello World!";
-some_char : char = '\0x41';
-some_char : char = 'a';
+/* Function declarations */
+a: function void (arg1: integer, arg2: integer) = {
+    return;
+}
+
+b: function integer (arg1: array [2] integer) = {
+    a(arg1[0], arg1[1]);
+    return 1 + arg1[0];
+}

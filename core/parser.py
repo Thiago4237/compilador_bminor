@@ -380,7 +380,7 @@ class Parser(sly.Parser):
 		
 	@_("ID index")
 	def lval(self, p):
-		return Index(Name(p.ID), [p.index])
+		return Index(Name(p.ID), [p[1]])
  
 	# -------------------------------------------------
 	# OPERADORES
@@ -511,7 +511,7 @@ class Parser(sly.Parser):
 		
 	@_("ID index")
 	def group(self, p):
-		return Index(Name(p.ID), [p.index])
+		return Index(Name(p.ID), [p[1]])
 		
 	@_("factor")
 	def group(self, p):

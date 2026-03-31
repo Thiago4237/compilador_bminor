@@ -1,2 +1,10 @@
- /* Missing size for array */
- a: array [3] integer array [] float;
+/* functions of incorrect types */
+
+a: function array [1] integer () = {
+    return;
+}
+
+b: function void () = {
+    c: function integer();
+    return 1;
+}

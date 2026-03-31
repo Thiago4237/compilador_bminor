@@ -1,7 +1,13 @@
-func : function void () = {
-    if (a > 1) {
-        a = a - 1;
-    } else {
-        a = a + 1;
+/* Multi-levels */
+
+var: integer;
+
+main: function void (var: integer) = {
+    {
+        var: integer;
+        main(var);
     }
+    var++;
 }
+
+new: integer = var;

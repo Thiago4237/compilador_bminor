@@ -3,6 +3,7 @@ import glob
 from graphviz import Digraph
 from rich.console import Console
 
+from core.checker import check
 from core.parser import parse
 from core.errors import clear_errors, errors_detected, set_console
 from ast_tree.rich_tree import build_rich_tree
@@ -59,7 +60,7 @@ def ejecutar(folder='test'):
             txt   = open(filepath, encoding='utf-8').read()
             ast   = parse(txt)
             count = errors_detected()
-
+            
             # ejecucion segun errores encontrados 
             if count == 0:
                 
@@ -69,25 +70,31 @@ def ejecutar(folder='test'):
                 file_console.print(ast)
 
                 # Generar archivo .dot del arbol graphviz
-                dot = ast_to_dot(ast)
-                dot.save(f'output/graphviz_tree/ast_{base}.dot')
-                console.print(f'[dim] -> output/graphviz_tree/ast_{base}.dot [/dim]')
-                
-                # generar imagen graphviz
-                # dot = Digraph()
-                # build_graphviz(ast, dot)
-                # dot.render("ast", format="png")
+                # dot = ast_to_dot(ast)
+                # dot.save(f'output/graphviz_tree/ast_{base}.dot')
+                # console.print(f'[dim] -> output/graphviz_tree/ast_{base}.dot [/dim]')
                 
                 # Árbol rich en consola y archivo txt
-                rich_tree = build_rich_tree(ast)
-                console.print(rich_tree)
-                console.print('[bold green] OK [/bold green]')
+                # rich_tree = build_rich_tree(ast)
+                # console.print(rich_tree)
+                # console.print('[bold green] OK [/bold green]')
                 
                 # abre un txt para el arbol rich
-                with open(f'output/rich_tree/rich_{base}.txt', 'w', encoding='utf-8') as f_rich:
-                    rich_file_console = Console(file=f_rich, highlight=False)
-                    rich_file_console.print(rich_tree)
+                # with open(f'output/rich_tree/rich_{base}.txt', 'w', encoding='utf-8') as f_rich:
+                #     rich_file_console = Console(file=f_rich, highlight=False)
+                #     rich_file_console.print(rich_tree)
                 
+                checker = check(ast)
+                
+                if checker.errors:
+                    console.print(f'[bold red]✗ {len(checker.errors)} error(es) semántico(s)[/bold red]')
+                    file_console.print(f'✗ {len(checker.errors)} error(es) semántico(s)')
+                else:
+                    console.print('[bold green]✓ OK semántico[/bold green]')
+                    file_console.print('✓ OK semántico')
+                    # imprimir tabla de símbolos en debug si quieres
+                    checker.symtab.print()
+                            
                 passed.append(name)
                 
             # codigo con errores al analizar

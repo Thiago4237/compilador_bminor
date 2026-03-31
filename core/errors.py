@@ -228,7 +228,13 @@ def define_error(p, parser=None):
                 and str(getattr(sym, 'value', '')) not in ('true', 'false', 'this')
             ]
 
-        if ctx == 'declaración incompleta' and prev_ids:
+        reserved_as_name = {'new', 'class', 'this', 'super', 'extends'}
+        if v.lower() in reserved_as_name:
+            msg = (
+                f"'{v}' es una palabra reservada y no puede usarse como nombre de variable — "
+                f"elija un nombre diferente"
+            )
+        elif ctx == 'declaración incompleta' and prev_ids:
             bad_name = prev_ids[-1]
             msg = (
                 f"'{v}' inesperado después de '{bad_name}' — "
@@ -335,10 +341,14 @@ def define_error(p, parser=None):
             elif ctx == 'tipo función' and 'ARRAY' not in [getattr(sym, 'type', None) for sym in parser.symstack]:
                 hint = "falta el tipo de retorno antes de '(' (ej: 'main : function integer () = { ... }')"
             elif ctx == 'tipo función':
-                hint = (
-                    "¿falta el tipo elemento del array de retorno? "
-                    "Use 'function array \\[n] tipo (params)'"
-                )
+                stack_t = [getattr(sym, 'type', None) for sym in parser.symstack] if parser else []
+                if 'ARRAY' not in stack_t:
+                    hint = "falta el tipo de retorno antes de '(' (ej: 'main : function integer () = { ... }')"
+                else:
+                    hint = (
+                        "¿falta el tipo elemento del array de retorno? "
+                        "Use 'function array \\[n] tipo (params)'"
+                    )
             else:
                 hint = "¿paréntesis inesperado?"
             msg = f"'{v}' inesperado{ctx_str} — {hint}"
@@ -361,13 +371,36 @@ def define_error(p, parser=None):
                 hint = "¿llave inesperada?"
             msg = f"'{v}' inesperado{ctx_str} — {hint}"
 
+        elif v == ':':
+            # revisar si el token anterior en la pila es una palabra reservada
+            reserved_in_stack = {'NEW', 'CLASS', 'SUPER', 'EXTENDS', 'THIS',
+                                'IF', 'FOR', 'WHILE', 'RETURN', 'PRINT',
+                                'FUNCTION', 'ARRAY', 'INTEGER', 'FLOAT',
+                                'BOOLEAN', 'CHAR', 'STRING', 'VOID'}
+            
+            last_reserved = None
+            if parser:
+                for sym in reversed(parser.symstack):
+                    t = getattr(sym, 'type', None)
+                    if t in reserved_in_stack:
+                        last_reserved = str(getattr(sym, 'value', t.lower()))
+                        break
+            
+            if last_reserved:
+                msg = (
+                    f"':' inesperado después de '{last_reserved}'{ctx_str} — "
+                    f"'{last_reserved}' es una palabra reservada y no puede usarse como nombre de variable, "
+                    f"elija un nombre diferente"
+                )
+            else:
+                msg = f"':' inesperado{ctx_str} — ¿falta el tipo después de ':'?"
+
         else:
             punct_hints = {
                 ']': _hint_bracket(ctx),
                 ')': "¿paréntesis sin abrir?",
                 '}': "¿llave sin abrir? — verifique que la función no termine con ';' después de '}'",
                 ';': "¿punto y coma sobrante o declaración incompleta?",
-                ':': "¿falta el tipo después de ':'?",
                 ',': "¿coma extra o argumento faltante?",
                 '.': "'.' inesperado — ¿acceso a campo mal formado?",
             }
