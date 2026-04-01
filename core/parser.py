@@ -54,15 +54,18 @@ class Parser(sly.Parser):
 	
 	@_("ID ':' type_simple ';'")
 	def decl(self, p):
-		return DeclTyped(p.ID, p.type_simple)
+		# return DeclTyped(p.ID, p.type_simple)
+		return _L(DeclTyped(p.ID, p.type_simple), p.lineno)
 		
 	@_("ID ':' type_array_sized ';'")
 	def decl(self, p):
-		return DeclTyped(p.ID, p.type_array_sized)
+		# return DeclTyped(p.ID, p.type_array_sized)
+		return _L(DeclTyped(p.ID, p.type_array_sized), p.lineno)
 		
 	@_("ID ':' type_func ';'")
 	def decl(self, p):
-		return DeclTyped(p.ID, p.type_func)
+		# return DeclTyped(p.ID, p.type_func)
+		return _L(DeclTyped(p.ID, p.type_func), p.lineno)
 		
 	@_("decl_init")
 	def decl(self, p):
@@ -166,19 +169,23 @@ class Parser(sly.Parser):
 	
 	@_("ID ':' type_simple '=' expr ';'")
 	def decl_init(self, p):
-		return DeclInit(p.ID, p.type_simple, p.expr)
+		# return DeclInit(p.ID, p.type_simple, p.expr)
+		return _L(DeclInit(p.ID, p.type_simple, p.expr), p.lineno)
 		
 	@_("ID ':' CONSTANT '=' expr ';'")
 	def decl_init(self, p):
-		return DeclInit(p.ID, SimpleType("CONSTANT"), p.expr)
+		# return DeclInit(p.ID, SimpleType("CONSTANT"), p.expr)
+		return _L(DeclInit(p.ID, SimpleType("CONSTANT"), p.expr), p.lineno)
 		
 	@_("ID ':' type_array_sized '=' '{' opt_expr_list '}' ';'")
 	def decl_init(self, p):
-		return DeclInit(p.ID, p.type_array_sized, p.opt_expr_list)
+		# return DeclInit(p.ID, p.type_array_sized, p.opt_expr_list)
+		return _L(DeclInit(p.ID, p.type_array_sized, p.opt_expr_list), p.lineno)
 		
 	@_("ID ':' type_func '=' '{' opt_stmt_list '}'")
 	def decl_init(self, p):
-		return DeclInit(p.ID, p.type_func, p.opt_stmt_list)
+		# return DeclInit(p.ID, p.type_func, p.opt_stmt_list)
+		return _L(DeclInit(p.ID, p.type_func, p.opt_stmt_list), p.lineno)
 		
 	# =================================================
 	# STATEMENTS
@@ -228,11 +235,13 @@ class Parser(sly.Parser):
 		
 	@_("if_cond closed_stmt ELSE closed_stmt")
 	def if_stmt_closed(self, p):
-		return If(p.if_cond, p.closed_stmt0, p.closed_stmt1)
+		# return If(p.if_cond, p.closed_stmt0, p.closed_stmt1)
+		return _L(If(p.if_cond, p.closed_stmt0, p.closed_stmt1), p.lineno)
 		
 	@_("if_cond stmt")
 	def if_stmt_open(self, p):
-		return If(p.if_cond, p.stmt)
+		# return If(p.if_cond, p.stmt)
+		return _L(If(p.if_cond, p.stmt), p.lineno)
 		
 	@_("if_cond closed_stmt ELSE if_stmt_open")
 	def if_stmt_open(self, p):
@@ -254,7 +263,8 @@ class Parser(sly.Parser):
 	@_("for_header closed_stmt")
 	def for_stmt_closed(self, p):
 		init, cond, step = p.for_header
-		return For(init, cond, step, p.closed_stmt)
+		# return For(init, cond, step, p.closed_stmt)
+		return _L(For(init, cond, step, p.closed_stmt), p.lineno)
 		
 	# -------------------------------------------------
 	# WHILE
@@ -270,7 +280,8 @@ class Parser(sly.Parser):
 		
 	@_("while_cond closed_stmt")
 	def while_stmt_closed(self, p):
-		return WhileStmt(p.while_cond, p.closed_stmt)
+		# return WhileStmt(p.while_cond, p.closed_stmt)
+		return _L(WhileStmt(p.while_cond, p.closed_stmt), p.lineno)
 		
 	# -------------------------------------------------
 	# SIMPLE STATEMENTS
@@ -294,7 +305,8 @@ class Parser(sly.Parser):
 	# RETURN
 	@_("RETURN opt_expr ';'")
 	def return_stmt(self, p):
-		return Return(p.opt_expr)
+		# return Return(p.opt_expr)
+		return _L(Return(p.opt_expr), p.lineno)
 
 	@_("BREAK ';'")
 	def break_stmt(self, p):
@@ -352,7 +364,8 @@ class Parser(sly.Parser):
 	@_("lval DIVEQ expr1")
 	@_("lval MODEQ expr1")
 	def expr1(self, p):
-		return Assign(p.lval, p.expr1)
+		# return Assign(p.lval, p.expr1)
+		return _L(Assign(p.lval, p.expr1), p.lineno)
 
 	@_("postfix '.' ID '='    expr1")
 	@_("postfix '.' ID ADDEQ  expr1")
@@ -376,7 +389,8 @@ class Parser(sly.Parser):
 	
 	@_("ID")
 	def lval(self, p):
-		return Name(p.ID)
+		# return Name(p.ID)
+		return _L(Name(p.ID), p.lineno)
 		
 	@_("ID index")
 	def lval(self, p):
@@ -469,7 +483,8 @@ class Parser(sly.Parser):
 
 	@_("postfix DOT ID '(' opt_expr_list ')'")
 	def postfix(self, p):
-		return Call(p.ID, p.opt_expr_list, obj=FieldAccess(p.postfix, p.ID))
+		# return Call(p.ID, p.opt_expr_list, obj=FieldAccess(p.postfix, p.ID))
+		return _L(Call(p.ID, p.opt_expr_list, obj=FieldAccess(p.postfix, p.ID)), p.lineno)
 
 	@_("postfix DOT ID")
 	def postfix(self, p):
@@ -507,7 +522,8 @@ class Parser(sly.Parser):
 		
 	@_("ID '(' opt_expr_list ')'")
 	def group(self, p):
-		return Call(p.ID, p.opt_expr_list)
+		# return Call(p.ID, p.opt_expr_list)
+		return _L(Call(p.ID, p.opt_expr_list), p.lineno)
 		
 	@_("ID index")
 	def group(self, p):
