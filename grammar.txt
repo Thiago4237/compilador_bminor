@@ -171,9 +171,9 @@ Rule 167   empty -> <empty>
 
 Unused terminals:
 
-    AUTO
-    LNOT
     POWEQ
+    LNOT
+    AUTO
 
 Terminals, with rules where they appear:
 
