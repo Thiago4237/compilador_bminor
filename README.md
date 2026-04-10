@@ -4,6 +4,13 @@ Compilador para el lenguaje **bminor+** construido en Python con `sly`. Realiza 
 
 ---
 
+## Integrantes del proyecto 
+- Cristhian Loaiza
+- Stephania Duque 
+- Victor Rosero
+
+---
+
 ## Estructura del proyecto
 
 ```
@@ -46,8 +53,8 @@ pip install multimethod
 
 | Librería      | Uso                                                        |
 |---------------|------------------------------------------------------------|
-| `sly`         | Construcción del lexer y parser (AFD/LALR)                 |
-| `rich`        | Impresión con color en consola y archivos                  |
+| `sly`         | Construcción del lexer y parser               |
+| `rich`        | Impresión con color en consola                  |
 | `graphviz`    | Generación de archivos `.dot` para el AST                  |
 | `multimethod` | Patrón Visitor para el analizador semántico                |
 
@@ -93,6 +100,10 @@ Recorre el AST con el patrón Visitor e implementa cuatro fases:
 | **Fase 2** | Scopes anidados, parámetros de funciones, redeclaraciones por alcance |
 | **Fase 3** | Anotación de tipos, validación de operadores y asignaciones |
 | **Fase 4** | Validación de llamadas a funciones, retornos, break y continue |
+
+### 4. Documentacion de ejemplo para simplificacion del patron visitor
+- https://refactoring.guru/es/design-patterns/visitor-double-dispatch
+- https://coderkarl.wordpress.com/2012/02/29/simplifying-the-visitor-pattern-with-the-dynamic-keyword/
 
 ---
 
