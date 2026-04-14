@@ -8,8 +8,8 @@ main: function void () = {
     else
         var--;
 
-    new: boolean;
-    if (new)
+    val: boolean;
+    if (val)
         var++;
     else
         var--;
