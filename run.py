@@ -15,6 +15,7 @@ from ast_tree.dot_graphviz import ast_to_dot, build_graphviz
 # ===============================================================
  
 EXTENSIONS = ('*.bminor', '*.bpp')
+SEPARADOR = '--'*50
 
 # ===============================================================
 # Ejecutar un archivo individual
@@ -60,21 +61,23 @@ def ejecutar_archivo(filepath, console, passed, failed):
             console.print(ast)
             console.print('[bold green]OK[/bold green]')
             file_console.print(ast)
+            
+            file_console.print(SEPARADOR)
 
             # Generar archivo .dot del arbol graphviz
-            # dot = ast_to_dot(ast)
-            # dot.save(f'output/graphviz_tree/ast_{base}.dot')
-            # console.print(f'[dim] -> output/graphviz_tree/ast_{base}.dot [/dim]')
+            dot = ast_to_dot(ast)
+            dot.save(f'output/graphviz_tree/ast_{base}.dot')
+            console.print(f'[dim] -> output/graphviz_tree/ast_{base}.dot [/dim]')
             
             # Árbol rich en consola y archivo txt
-            # rich_tree = build_rich_tree(ast)
-            # console.print(rich_tree)
-            # console.print('[bold green] OK [/bold green]')
+            rich_tree = build_rich_tree(ast)
+            console.print(rich_tree)
+            console.print('[bold green] OK [/bold green]')
             
             # abre un txt para el arbol rich
-            # with open(f'output/rich_tree/rich_{base}.txt', 'w', encoding='utf-8') as f_rich:
-            #     rich_file_console = Console(file=f_rich, highlight=False)
-            #     rich_file_console.print(rich_tree)
+            with open(f'output/rich_tree/rich_{base}.txt', 'w', encoding='utf-8') as f_rich:
+                rich_file_console = Console(file=f_rich, highlight=False)
+                rich_file_console.print(rich_tree)
             
             # Análisis semántico
             checker = check(ast)
@@ -87,6 +90,8 @@ def ejecutar_archivo(filepath, console, passed, failed):
                 file_console.print('OK semántico')
                 # imprimir tabla de símbolos en debug si quieres
                 checker.symtab.print()
+                
+            file_console.print(SEPARADOR)
  
             passed.append(name)
             
