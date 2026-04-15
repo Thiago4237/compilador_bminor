@@ -208,3 +208,6 @@ __marimo__/
 
 # carpeta de salida 
 output/
+
+# archivo no necesario
+grammar.txt
