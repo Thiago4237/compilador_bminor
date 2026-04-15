@@ -13,4 +13,4 @@ main: function void (var: integer) = {
     var++;
 }
 
-new: integer = var;
+val: integer = var;

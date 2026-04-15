@@ -44,7 +44,7 @@ def _type_name(typ) -> str:
         return f'array[] {_type_name(typ.elem)}'
     
     if isinstance(typ, ArraySizedType):
-        return f'array[n] {_type_name(typ.elem)}'
+        return f'array[] {_type_name(typ.elem)}'
     
     if isinstance(typ, FuncType):
         return f'function -> {_type_name(typ.ret)}'

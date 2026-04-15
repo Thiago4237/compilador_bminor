@@ -8,9 +8,9 @@ main: function void () = {
     else
         var--;
 
-    new: integer = 0;
-    if (new)
-        new++;
+    val: integer = 0;
+    if (val)
+        val++;
     else
-        new--;
+        val--;
 }
