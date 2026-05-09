@@ -357,24 +357,58 @@ class Parser(sly.Parser):
 	def expr(self, p):
 		return p.expr1
 		
-	@_("lval  '='  expr1")
-	@_("lval ADDEQ expr1")
-	@_("lval SUBEQ expr1")
-	@_("lval MULEQ expr1")
-	@_("lval DIVEQ expr1")
-	@_("lval MODEQ expr1")
+	@_("lval '=' expr1")
 	def expr1(self, p):
-		# return Assign(p.lval, p.expr1)
 		return _L(Assign(p.lval, p.expr1), p.lineno)
 
-	@_("postfix '.' ID '='    expr1")
-	@_("postfix '.' ID ADDEQ  expr1")
-	@_("postfix '.' ID SUBEQ  expr1")
-	@_("postfix '.' ID MULEQ  expr1")
-	@_("postfix '.' ID DIVEQ  expr1")
-	@_("postfix '.' ID MODEQ  expr1")
+	@_("lval ADDEQ expr1")
+	def expr1(self, p):
+		return _L(Assign(p.lval, BinOp('+', p.lval, p.expr1)), p.lineno)
+
+	@_("lval SUBEQ expr1")
+	def expr1(self, p):
+		return _L(Assign(p.lval, BinOp('-', p.lval, p.expr1)), p.lineno)
+
+	@_("lval MULEQ expr1")
+	def expr1(self, p):
+		return _L(Assign(p.lval, BinOp('*', p.lval, p.expr1)), p.lineno)
+
+	@_("lval DIVEQ expr1")
+	def expr1(self, p):
+		return _L(Assign(p.lval, BinOp('/', p.lval, p.expr1)), p.lineno)
+
+	@_("lval MODEQ expr1")
+	def expr1(self, p):
+		return _L(Assign(p.lval, BinOp('%', p.lval, p.expr1)), p.lineno)
+
+	@_("postfix '.' ID '=' expr1")
 	def expr1(self, p):
 		return _L(Assign(FieldAccess(p.postfix, p.ID), p.expr1), p.lineno)
+
+	@_("postfix '.' ID ADDEQ expr1")
+	def expr1(self, p):
+		target = FieldAccess(p.postfix, p.ID)
+		return _L(Assign(target, BinOp('+', target, p.expr1)), p.lineno)
+
+	@_("postfix '.' ID SUBEQ expr1")
+	def expr1(self, p):
+		target = FieldAccess(p.postfix, p.ID)
+		return _L(Assign(target, BinOp('-', target, p.expr1)), p.lineno)
+
+	@_("postfix '.' ID MULEQ expr1")
+	def expr1(self, p):
+		target = FieldAccess(p.postfix, p.ID)
+		return _L(Assign(target, BinOp('*', target, p.expr1)), p.lineno)
+
+	@_("postfix '.' ID DIVEQ expr1")
+	def expr1(self, p):
+		target = FieldAccess(p.postfix, p.ID)
+		return _L(Assign(target, BinOp('/', target, p.expr1)), p.lineno)
+
+	@_("postfix '.' ID MODEQ expr1")
+	def expr1(self, p):
+		target = FieldAccess(p.postfix, p.ID)
+		return _L(Assign(target, BinOp('%', target, p.expr1)), p.lineno)
 
 	# Operador ternario: cond ? then : else
 	@_("expr2 '?' expr1 ':' expr1")
@@ -572,7 +606,7 @@ class Parser(sly.Parser):
 		
 	@_("TRUE", "FALSE")
 	def factor(self, p):
-		return _L(Literal('bool', p[0] == 'TRUE'), p.lineno)
+		return _L(Literal('bool', p[0].upper() == 'TRUE'), p.lineno)
 		
 	@_("THIS")
 	def factor(self, p):

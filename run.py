@@ -5,10 +5,13 @@ from graphviz import Digraph
 from rich.console import Console
 
 from core.checker import check
+from core.irinterp import IRInterpreter
 from core.parser import parse
 from core.errors import clear_errors, errors_detected, set_console
+from core.IRCode import generate_ir
 from ast_tree.rich_tree import build_rich_tree
 from ast_tree.dot_graphviz import ast_to_dot, build_graphviz
+
 
 # ===============================================================
 # Extensiones soportadas
@@ -60,36 +63,49 @@ def ejecutar_archivo(filepath, console, passed, failed):
             # registra la salida en consola y en archivo txt
             # console.print(ast)
             # console.print('[bold green]OK[/bold green]')
-            # file_console.print(ast)
+            file_console.print(ast)
             
-            # file_console.print(SEPARADOR)
+            file_console.print(SEPARADOR)
 
             # Generar archivo .dot del arbol graphviz
-            # dot = ast_to_dot(ast)
-            # dot.save(f'output/graphviz_tree/ast_{base}.dot')
+            dot = ast_to_dot(ast)
+            dot.save(f'output/graphviz_tree/ast_{base}.dot')
             # console.print(f'[dim] -> output/graphviz_tree/ast_{base}.dot [/dim]')
             
             # Árbol rich en consola y archivo txt
-            # rich_tree = build_rich_tree(ast)
+            rich_tree = build_rich_tree(ast)
             # console.print(rich_tree)
             # console.print('[bold green] OK [/bold green]')
             
             # abre un txt para el arbol rich
-            # with open(f'output/rich_tree/rich_{base}.txt', 'w', encoding='utf-8') as f_rich:
-            #     rich_file_console = Console(file=f_rich, highlight=False)
-            #     rich_file_console.print(rich_tree)
+            with open(f'output/rich_tree/rich_{base}.txt', 'w', encoding='utf-8') as f_rich:
+                rich_file_console = Console(file=f_rich, highlight=False)
+                rich_file_console.print(rich_tree)
             
             # Análisis semántico
             checker = check(ast)
  
             if checker.errors:
-                console.print(f'[bold red]{len(checker.errors)} error(es) semántico(s)[/bold red]')
+                # console.print(f'[bold red]{len(checker.errors)} error(es) semántico(s)[/bold red]')
                 file_console.print(f'{len(checker.errors)} error(es) semántico(s)')
             else:
-                console.print('[bold green]OK semántico[/bold green]')
+                # console.print('[bold green]OK semántico[/bold green]')
                 file_console.print('OK semántico')
                 # imprimir tabla de símbolos en debug si quieres
-                checker.symtab.print()
+                # checker.symtab.print()
+                
+                ir = generate_ir(ast)
+                # mostrar en consola
+                console.print(ir.format())
+                
+                # guardar en archivo
+                os.makedirs('output/ir', exist_ok=True)
+                with open(f'output/ir/ir_{base}.txt', 'w', encoding='utf-8') as f_ir:
+                    f_ir.write(ir.format())
+                console.print(f'[dim] -> output/ir/ir_{base}.txt [/dim]')
+                
+                interp = IRInterpreter(ir, trace=False)
+                interp.run("main")
                 
             file_console.print(SEPARADOR)
  
