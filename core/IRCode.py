@@ -143,6 +143,10 @@ class IRCodeGen(Visitor):
         self.temp_count           = 0
         self.label_count          = 0
         self.scopes: list[dict[str, Storage]] = []
+        # Instrucciones de inicialización de globales que se inyectan
+        # al inicio de main (el intérprete no ejecuta MOV*/STORE* en globals).
+        self._global_inits: list[Instruction] = []
+        self._emitting_global_init: bool = False  # True mientras se genera init de un global
 
     @classmethod
     def generate(cls, node: Program) -> IRProgram:
@@ -169,7 +173,9 @@ class IRCodeGen(Visitor):
             
         inst = tuple(inst)
         
-        if self.current_function is None:
+        if self._emitting_global_init:
+            self._global_inits.append(inst)
+        elif self.current_function is None:
             self.program.globals.append(inst)
         else:
             self.current_function.instructions.append(inst)
@@ -196,6 +202,9 @@ class IRCodeGen(Visitor):
     # -------------------------------------------------
 
     def _sfx(self, typ) -> str:
+        # Arrays se tratan como enteros (celdas aplanadas a escalares)
+        if isinstance(typ, (ArrayType, ArraySizedType)):
+            return 'I'
         return _type_suffix(typ)
 
     def mov_op(self, typ)   -> str: return f"MOV{self._sfx(typ)}"
@@ -250,6 +259,37 @@ class IRCodeGen(Visitor):
         for decl in node.decls:
             self.visit(decl)
 
+        # Generar stubs vacíos para funciones declaradas sin cuerpo (forward declarations).
+        # El intérprete necesita encontrar la función en self.functions al hacer CALL.
+        defined_fns = {fn.name for fn in self.program.functions}
+        for decl in node.decls:
+            if (isinstance(decl, DeclTyped)
+                    and isinstance(decl.typ, FuncType)
+                    and decl.name not in defined_fns):
+                stub = IRFunction(
+                    name=decl.name,
+                    params=[(p.name, p.typ) for p in decl.typ.params],
+                    return_type=decl.typ.ret,
+                )
+                stub.instructions.append(("RET",))
+                self.program.functions.append(stub)
+                defined_fns.add(decl.name)
+
+        # Si no hay función main, generarla (con las inits de globals si las hay).
+        # El intérprete siempre llama main como punto de entrada.
+        main_names = {fn.name for fn in self.program.functions}
+        if "main" not in main_names:
+            fn = IRFunction(
+                name="main",
+                params=[],
+                return_type=SimpleType("void"),
+            )
+            for inst in self._global_inits:
+                fn.instructions.append(inst)
+            fn.instructions.append(("RET",))
+            self.program.functions.append(fn)
+            self._global_inits.clear()
+
         self.pop_scope()
         return self.program
 
@@ -260,7 +300,11 @@ class IRCodeGen(Visitor):
     def visit(self, node: DeclTyped):
         # Declaración sin inicialización — solo reservar espacio
         if self.current_function is None:
-            self.emit(self.var_op(node.typ), node.name)
+            # Funciones sin cuerpo y arrays no generan instrucción global
+            if isinstance(node.typ, FuncType):
+                return
+            if not isinstance(node.typ, (ArrayType, ArraySizedType)):
+                self.emit(self.var_op(node.typ), node.name)
         else:
             self.bind(Storage(node.name, node.typ))
             self.emit(self.alloc_op(node.typ), node.name)
@@ -276,14 +320,21 @@ class IRCodeGen(Visitor):
 
         # Variable o constante
         if self.current_function is None:
-            # Global
-            self.emit(self.var_op(typ), node.name)
+            # Global: solo declarar la variable en program.globals
+            # Arrays: el intérprete no soporta VARA; se omite la declaración
+            if not isinstance(typ, (ArrayType, ArraySizedType)):
+                self.emit(self.var_op(typ), node.name)
             if node.init is not None:
-                if isinstance(node.init, list):
-                    self._init_array_global(node)
-                else:
-                    src = self.visit(node.init)
-                    self.emit(self.store_op(typ), src, node.name)
+                # La inicialización se desvía al buffer _global_inits
+                self._emitting_global_init = True
+                try:
+                    if isinstance(node.init, list):
+                        self._init_array_global(node)
+                    else:
+                        src = self.visit(node.init)
+                        self._global_inits.append(tuple([self.store_op(typ), src, node.name]))
+                finally:
+                    self._emitting_global_init = False
         else:
             # Local
             self.bind(Storage(node.name, typ, is_const=is_const))
@@ -295,17 +346,56 @@ class IRCodeGen(Visitor):
                     src = self.visit(node.init)
                     self.emit(self.store_op(typ), src, node.name)
 
+    def _array_cell_name(self, arr_name: str, index) -> str:
+        """Nombre de la variable escalar que representa arr_name[index]."""
+        return f"{arr_name}_{index}"
+
+    def _array_cell_store_op(self, elem_typ) -> str:
+        """STORE* apropiado para el tipo de elemento del array."""
+        if isinstance(elem_typ, (ArrayType, ArraySizedType)):
+            return 'STOREI'  # puntero/referencia como entero
+        return self.store_op(elem_typ)
+
+    def _array_cell_load_op(self, elem_typ) -> str:
+        """LOAD* apropiado para el tipo de elemento del array."""
+        if isinstance(elem_typ, (ArrayType, ArraySizedType)):
+            return 'LOADI'
+        return self.load_op(elem_typ)
+
+    def _array_cell_alloc_op(self, elem_typ) -> str:
+        """ALLOC* apropiado para el tipo de elemento del array."""
+        if isinstance(elem_typ, (ArrayType, ArraySizedType)):
+            return 'ALLOCI'
+        return self.alloc_op(elem_typ)
+
+    def _array_cell_var_op(self, elem_typ) -> str:
+        """VAR* apropiado para el tipo de elemento del array."""
+        if isinstance(elem_typ, (ArrayType, ArraySizedType)):
+            return 'VARI'
+        return self.var_op(elem_typ)
+
     def _init_array_global(self, node: DeclInit):
-        """Inicializa un arreglo global elemento a elemento."""
+        """Inicializa un arreglo global como variables escalares arr_0, arr_1…"""
+        typ = node.typ
+        elem_typ = typ.elem if isinstance(typ, (ArrayType, ArraySizedType)) else typ
         for i, elem in enumerate(node.init):
+            cell = self._array_cell_name(node.name, i)
+            # Declarar la celda en globals (fuera del buffer de inits)
+            self._emitting_global_init = False
+            self.emit(self._array_cell_var_op(elem_typ), cell)
+            self._emitting_global_init = True
             src = self.visit(elem)
-            self.emit('STOREA', src, node.name, i)
+            self.emit(self._array_cell_store_op(elem_typ), src, cell)
 
     def _init_array_local(self, node: DeclInit):
-        """Inicializa un arreglo local elemento a elemento."""
+        """Inicializa un arreglo local como variables escalares arr_0, arr_1…"""
+        typ = node.typ
+        elem_typ = typ.elem if isinstance(typ, (ArrayType, ArraySizedType)) else typ
         for i, elem in enumerate(node.init):
+            cell = self._array_cell_name(node.name, i)
+            self.emit(self._array_cell_alloc_op(elem_typ), cell)
             src = self.visit(elem)
-            self.emit('STOREA', src, node.name, i)
+            self.emit(self._array_cell_store_op(elem_typ), src, cell)
 
     def _visit_func(self, node: DeclInit):
         """Genera IR para una función."""
@@ -327,6 +417,12 @@ class IRCodeGen(Visitor):
         for param in node.typ.params:
             self.bind(Storage(param.name, param.typ, is_param=True))
             self.emit(self.alloc_op(param.typ), param.name)
+
+        # Inyectar inicializaciones de globales al inicio de main
+        if node.name == "main" and self._global_inits:
+            for init_inst in self._global_inits:
+                fn.instructions.append(init_inst)
+            self._global_inits.clear()
 
         # Generar cuerpo
         if node.init is not None:
@@ -528,7 +624,7 @@ class IRCodeGen(Visitor):
             self.emit('CBRANCH', left_reg, l_true, l_check)
             self.emit('LABEL', l_check)
             right2 = self.visit(node.right)
-            self.emit(self.mov_op(left_typ), right2, out)
+            self.emit('PHI', right2, out)
             self.emit('BRANCH', l_end)
             self.emit('LABEL', l_true)
             self.emit('MOVI', 1, out)
@@ -543,7 +639,7 @@ class IRCodeGen(Visitor):
             self.emit('CBRANCH', left_reg, l_check, l_false)
             self.emit('LABEL', l_check)
             right2 = self.visit(node.right)
-            self.emit(self.mov_op(left_typ), right2, out)
+            self.emit('PHI', right2, out)
             self.emit('BRANCH', l_end)
             self.emit('LABEL', l_false)
             self.emit('MOVI', 0, out)
@@ -555,11 +651,19 @@ class IRCodeGen(Visitor):
         return out
 
     def visit(self, node: UnaryOp):
-        reg = self.visit(node.expr)
         typ = self._infer_type(node.expr)
         out = self.new_temp()
 
         if node.op == '-':
+            # Optimización: literal negativo → MOV directo, sin SUBI
+            if isinstance(node.expr, Literal):
+                if node.expr.kind == 'int':
+                    self.emit('MOVI', -int(node.expr.value), out)
+                    return out
+                if node.expr.kind == 'float':
+                    self.emit('MOVF', -float(node.expr.value), out)
+                    return out
+            reg  = self.visit(node.expr)
             zero = self.new_temp()
             self.emit(self.mov_op(typ), 0, zero)
             self.emit(self.arith_op('-', typ), zero, reg, out)
@@ -660,6 +764,20 @@ class IRCodeGen(Visitor):
 
         # Asignación a índice de arreglo
         if isinstance(node.target, Index):
+            if isinstance(node.target.base, Name):
+                arr_name = node.target.base.id
+                storage  = self.lookup(arr_name)
+                arr_typ  = storage.ty if storage else None
+                elem_typ = arr_typ.elem if isinstance(arr_typ, (ArrayType, ArraySizedType)) else None
+
+                if isinstance(node.target.indices[0], Literal) and node.target.indices[0].kind == 'int':
+                    idx  = int(node.target.indices[0].value)
+                    cell = self._array_cell_name(arr_name, idx)
+                    sop  = self._array_cell_store_op(elem_typ) if elem_typ else 'STOREI'
+                    self.emit(sop, src, cell)
+                    return src
+
+            # Fallback genérico (índice dinámico)
             base_reg = self.visit(node.target.base)
             idx_reg  = self.visit(node.target.indices[0])
             self.emit('STOREA', src, base_reg, idx_reg)
@@ -668,7 +786,24 @@ class IRCodeGen(Visitor):
         return src
 
     def visit(self, node: Index):
-        """Acceso a elemento de arreglo."""
+        """Acceso a elemento de arreglo — aplanado a variable escalar arr_N."""
+        # Solo soportamos índice literal o nombre de variable con valor constante conocido.
+        # Para índices literales enteros usamos la celda arr_N directamente.
+        if isinstance(node.base, Name):
+            arr_name = node.base.id
+            storage  = self.lookup(arr_name)
+            arr_typ  = storage.ty if storage else None
+            elem_typ = arr_typ.elem if isinstance(arr_typ, (ArrayType, ArraySizedType)) else None
+
+            if isinstance(node.indices[0], Literal) and node.indices[0].kind == 'int':
+                idx  = int(node.indices[0].value)
+                cell = self._array_cell_name(arr_name, idx)
+                out  = self.new_temp()
+                lop  = self._array_cell_load_op(elem_typ) if elem_typ else 'LOADI'
+                self.emit(lop, cell, out)
+                return out
+
+        # Fallback genérico (índice dinámico) — emite LOADA igual que antes
         base_reg = self.visit(node.base)
         idx_reg  = self.visit(node.indices[0])
         out      = self.new_temp()

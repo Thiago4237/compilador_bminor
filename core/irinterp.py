@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from os import name
 from typing import Any, Optional
 
 
@@ -176,10 +177,13 @@ class IRInterpreter:
 		# -------------------------
 		# Variables locales/globales
 		# -------------------------
-		if op in {"ALLOCI", "ALLOCF", "ALLOCB", "ALLOCS"}:
+		if op in {"ALLOCI", "ALLOCF", "ALLOCB", "ALLOCS", "ALLOCA"}:
 			_, name = inst
-			# No borrar parámetros ya inicializados.
-			frame.locals.setdefault(name, self._default_for_op(op))
+			if op == "ALLOCA":
+				frame.locals.setdefault(name, {})
+			else:
+				# No borrar parámetros ya inicializados.
+				frame.locals.setdefault(name, self._default_for_op(op))
 			return None
 			
 		if op in {"VARI", "VARF", "VARB", "VARS"}:
@@ -196,19 +200,72 @@ class IRInterpreter:
 			_, source, name = inst
 			self._store_var(frame, name, self._value(frame, source))
 			return None
+
+					# STOREA src, name, index
+		if op == "STOREA":
+			_, src, name, idx = inst
+			value = self._value(frame, src)
+			index = self._value(frame, idx) if isinstance(idx, str) else int(idx)
+			arr = self._load_var(frame, name)
+			if not isinstance(arr, dict):
+				arr = {}
+				self._store_var(frame, name, arr)
+			arr[index] = value
+			return None
+
+		if op == "LOADA":
+			_, base, idx, target = inst
+			arr_val = self._value(frame, base)
+			index = self._value(frame, idx)
+			index = int(index) if not isinstance(index, int) else index
+
+			# Caso 1: el registro ya contiene el dict reconstruido
+			if isinstance(arr_val, dict):
+				frame.regs[target] = arr_val.get(index, 0)
+				return None
+
+			# Caso 2: arr_val es un string con el nombre base del arreglo
+			# → buscar celda aplanada: name_0, name_1, etc.
+			name = arr_val
+			cell = f"{name}_{index}"
+			if cell in frame.locals:
+				frame.regs[target] = frame.locals[cell]
+			elif cell in self.globals:
+				frame.regs[target] = self.globals[cell]
+			else:
+				frame.regs[target] = 0
+			return None
+
+		if op == "STOREA":
+			_, src, name, idx = inst
+			value = self._value(frame, src)
+			arr_name = self._value(frame, name) if isinstance(name, str) and name.startswith('R') else name
+			index = self._value(frame, idx)
+			index = int(index) if not isinstance(index, int) else index
 			
+			# Guardar en celda aplanada
+			cell = f"{arr_name}_{index}"
+			if cell in frame.locals:
+				frame.locals[cell] = value
+			elif cell in self.globals:
+				self.globals[cell] = value
+			else:
+				frame.locals[cell] = value  # crear local si no existe
+			return None
+		
 		# -------------------------
-		# Literales
+		#Literales
 		# -------------------------
+
 		if op in {"MOVI", "MOVF", "MOVB", "MOVS"}:
 			_, value, target = inst
 			if op == "MOVF":
 				value = float(value)
-			elif op in {"MOVI", "MOVB"}:
+			elif op in ("MOVI", "MOVB"):
 				value = int(value)
 			elif op == "MOVS":
 				if isinstance(value, str) and value.startswith('"') and value.endswith('"'):
-					value = value[1:-1]
+					value = value[1:-1]  # quitar comillas si es literal directo
 			frame.regs[target] = value
 			return None
 			
@@ -222,7 +279,7 @@ class IRInterpreter:
 			if op.startswith("ADD"):
 				out = a + b
 			elif op.startswith("SUB"):
-				out = a - bcls
+				out = a - b
 
 			elif op.startswith("MUL"):
 				out = a * b
@@ -388,11 +445,60 @@ class IRInterpreter:
 		
 	def _load_var(self, frame: Frame, name: str):
 		if name in frame.locals:
-			return frame.locals[name]
+			val = frame.locals[name]
+			if isinstance(val, str):
+				return self._reconstruct_array(val, frame)
+			return val
 		if name in self.globals:
 			return self.globals[name]
+
+		# Patrón base_N: el nombre tiene forma "arr_0", "arr_1", etc.
+		# Si "arr" ya es un dict (parámetro reconstruido), devolver dict[N].
+		if '_' in name:
+			sep = name.rfind('_')
+			base = name[:sep]
+			suffix = name[sep+1:]
+			if suffix.lstrip('-').isdigit():
+				index = int(suffix)
+				# Buscar base como dict en locals
+				base_val = frame.locals.get(base) or self.globals.get(base)
+				if isinstance(base_val, dict):
+					if index in base_val:
+						return base_val[index]
+					raise IRRuntimeError(
+						f"Índice {index} fuera de rango en arreglo '{base}'"
+					)
+
+		# Último recurso: puede ser un arreglo aplanado en globals/locals
+		# (e.g. numbers_0, numbers_1, ...) sin declaración ALLOCI previa.
+		try:
+			return self._reconstruct_array(name, frame)
+		except IRRuntimeError:
+			pass
 		raise IRRuntimeError(f"Variable no definida: {name}")
+	
+	def _reconstruct_array(self, name: str, frame: Frame) -> dict:
+		"""Reconstruye arreglo desde variables aplanadas en globals o locals."""
 		
+		# Buscar en locals primero
+		if frame is not None:
+			flat_keys = sorted(
+				[k for k in frame.locals if k.startswith(name + '_')],
+				key=lambda k: int(k[len(name)+1:])
+			)
+			if flat_keys:
+				return {int(k[len(name)+1:]): frame.locals[k] for k in flat_keys}
+		
+		# Buscar en globals
+		flat_keys = sorted(
+			[k for k in self.globals if k.startswith(name + '_')],
+			key=lambda k: int(k[len(name)+1:])
+		)
+		if flat_keys:
+			return {int(k[len(name)+1:]): self.globals[k] for k in flat_keys}
+		
+		raise IRRuntimeError(f"Variable no definida: {name}")
+	
 	def _store_var(self, frame: Frame, name: str, value):
 		if name in frame.locals:
 			frame.locals[name] = value
@@ -401,6 +507,8 @@ class IRInterpreter:
 		else:
 			# Si no existe, asumimos local para tolerar IR sencillo.
 			frame.locals[name] = value
+
+	
 			
 	def _label_pc(self, frame: Frame, label: str) -> int:
 		if label not in frame.labels:
@@ -482,4 +590,3 @@ if __name__ == "__main__":
 		ir = IRCodeGen.generate(ast)
 		interp = IRInterpreter(ir, trace=True)
 		interp.run("main")
-
