@@ -1,6 +1,7 @@
 import os
 import glob
 import sys
+
 from graphviz import Digraph
 from rich.console import Console
 
@@ -9,6 +10,7 @@ from core.irinterp import IRInterpreter
 from core.parser import parse
 from core.errors import clear_errors, errors_detected, set_console
 from core.IRCode import generate_ir
+from core.iroptimizer import IROptimizer, parse_opt_level
 from ast_tree.rich_tree import build_rich_tree
 from ast_tree.dot_graphviz import ast_to_dot, build_graphviz
 
@@ -18,13 +20,13 @@ from ast_tree.dot_graphviz import ast_to_dot, build_graphviz
 # ===============================================================
  
 EXTENSIONS = ('*.bminor', '*.bpp')
-SEPARADOR = '--'*50
+SEPARADOR = '--' * 50
 
 # ===============================================================
 # Ejecutar un archivo individual
 # ===============================================================
 
-def ejecutar_archivo(filepath, console, passed, failed):
+def ejecutar_archivo(filepath, console, passed, failed, opt_level=0):
  
     # informacion del nombre del archivo
     name = os.path.basename(filepath)
@@ -95,15 +97,25 @@ def ejecutar_archivo(filepath, console, passed, failed):
                 # checker.symtab.print()
                 
                 ir = generate_ir(ast)
-                # mostrar en consola
                 console.print(ir.format())
                 
-                # guardar en archivo
                 os.makedirs('output/ir', exist_ok=True)
+                
                 with open(f'output/ir/ir_{base}.txt', 'w', encoding='utf-8') as f_ir:
                     f_ir.write(ir.format())
-                console.print(f'[dim] -> output/ir/ir_{base}.txt [/dim]')
                 
+                level_tag = f'-O{opt_level}'
+                console.print(f'[bold yellow]Optimización: {level_tag}[/bold yellow]')
+                
+                ir = IROptimizer.optimize(ir, level=opt_level)
+                console.print(ir.format())
+                
+                with open(f'output/ir/ir_{base}_{level_tag}.txt', 'w', encoding='utf-8') as f_ir:
+                    f_ir.write(ir.format())
+                    
+                console.print(f'[dim] -> output/ir/ir_{base}_{level_tag}.txt [/dim]')
+                
+                # Interpretar
                 interp = IRInterpreter(ir, trace=False)
                 interp.run("main")
                 
@@ -122,7 +134,7 @@ def ejecutar_archivo(filepath, console, passed, failed):
 # Ejecutar todos los archivos de una carpeta
 # ===============================================================
  
-def ejecutar(folder='test'):
+def ejecutar(folder='test', opt_level=0):
  
     # recolectar archivos de todas las extensiones soportadas
     test_files = []
@@ -141,7 +153,7 @@ def ejecutar(folder='test'):
     failed  = []
  
     for filepath in test_files:
-        ejecutar_archivo(filepath, console, passed, failed)
+        ejecutar_archivo(filepath, console, passed, failed, opt_level)
  
     # resumen
     console.rule('[bold] Resumen [/bold]')
@@ -150,31 +162,74 @@ def ejecutar(folder='test'):
     console.print(f'[bold]Total: {len(passed)}/{len(test_files)} archivos correctos[/bold]')
 
 # ===============================================================
+# Parsear argumentos de línea de comandos
+# ===============================================================
+
+def _parse_args(argv: list[str]):
+    """
+    Formas válidas:
+      python run.py                          → carpeta test/, -O0
+      python run.py --O1                     → carpeta test/, -O1
+      python run.py test/archivo.bminor      → archivo, -O0
+      python run.py test/archivo.bminor --O1 → archivo, -O1
+      python run.py test/archivo.bminor --O2 → archivo, -O2
+    """
+    filepath  = None
+    opt_level = 0
+
+    for token in argv:
+        # Detectar token de optimización: --O0, --O1, -O1, O1, 0, 1, 2 …
+        stripped = token.lstrip('-')
+        if stripped.upper().startswith('O') or (stripped.isdigit()):
+            try:
+                opt_level = parse_opt_level(token)
+                continue
+            except ValueError:
+                pass
+
+        # Si no es opción de optimización, es la ruta del archivo
+        if filepath is None:
+            filepath = token
+        else:
+            # Argumento desconocido
+            print(f'Argumento no reconocido: {token!r}')
+            _print_uso()
+            sys.exit(1)
+
+    return filepath, opt_level
+
+def _print_uso():
+    print('Uso:')
+    print('  python run.py                              # todos los archivos en test/ con -O0')
+    print('  python run.py test/archivo.bminor          # archivo específico con -O0')
+    print('  python run.py test/archivo.bminor --O1     # archivo con optimización -O1')
+    print('  python run.py test/archivo.bminor --O2     # archivo con optimización -O2')
+    print('  python run.py --O1                         # todos los archivos en test/ con -O1')
+
+# ===============================================================
 # main
 # ===============================================================
 
 if __name__ == '__main__':
  
-    if len(sys.argv) == 2:
-        # archivo específico
-        filepath = sys.argv[1]
+    filepath, opt_level = _parse_args(sys.argv[1:])
+    
+    if filepath is not None:
+        # Archivo específico
         if not os.path.isfile(filepath):
             print(f'Archivo no encontrado: {filepath}')
             sys.exit(1)
+            
         ext = os.path.splitext(filepath)[1].lower()
+        
         if ext not in ('.bminor', '.bpp'):
             print(f'Extensión no soportada: {ext} — use .bminor o .bpp')
             sys.exit(1)
+            
         console = Console()
-        passed, failed = [], []
-        ejecutar_archivo(filepath, console, passed, failed)
- 
-    elif len(sys.argv) == 1:
-        # sin argumentos → ejecutar carpeta test/
-        ejecutar()
- 
+        ejecutar_archivo(filepath, console, [], [], opt_level)
+        
     else:
-        print('Uso:')
-        print('  python run.py                  # ejecuta todos los archivos en test/')
-        print('  python run.py test/archivo.bminor  # ejecuta un archivo específico')
-        sys.exit(1)
+        # Sin archivo → carpeta test/
+        ejecutar(opt_level=opt_level)
+        
