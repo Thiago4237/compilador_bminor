@@ -23,7 +23,9 @@ compilador_bminor/
 │   ├── parser.py               # Analizador sintáctico (LALR)
 │   ├── checker.py              # Analizador semántico (Visitor)
 │   ├── symtab.py               # Tabla de símbolos (ChainMap)
-│   └── typesys.py              # Sistema de tipos
+│   ├── typesys.py              # Sistema de tipos
+│   ├── IRCode.py               # Generador de código intermedio (IR)
+│   └── iroptimizer.py          # Optimizador de IR (-O0, -O1, -O2)
 ├── ast_tree/                   # Visualización del AST
 │   ├── __init__.py
 │   ├── dot_graphviz.py         # Generación de grafos DOT
@@ -31,7 +33,8 @@ compilador_bminor/
 ├── output/                     # Archivos de salida generados
 │   ├── console_output/         # AST y errores en texto plano
 │   ├── graphviz_tree/          # Grafos AST en formato DOT
-│   └── rich_tree/              # Árboles AST en formato Rich
+│   ├── rich_tree/              # Árboles AST en formato Rich
+│   └── ir/                     # IR generada (con nivel de optimización)
 ├── test/                       # Archivos de prueba .bminor / .bpp
 ├── grammar.txt                 # Tablas LALR generadas por sly
 ├── run.py                      # Ejecutor principal
@@ -68,7 +71,7 @@ pip install multimethod
 python run.py
 ```
 
-Procesa todos los archivos `.bminor` y `.bpp` en `test/`, ejecuta el análisis completo y genera los archivos de salida en `output/`.
+Procesa todos los archivos `.bminor` y `.bpp` en `test/`, ejecuta el análisis completo y genera los archivos de salida en `output/`. Por defecto aplica `-O0` (sin optimización).
 
 ### Ejecutar un archivo específico
 
@@ -77,7 +80,24 @@ python run.py test/archivo.bminor
 python run.py test/archivo.bpp
 ```
 
-Procesa únicamente el archivo indicado y genera sus salidas correspondientes.
+### Ejecutar con optimización de IR
+
+Se puede indicar el nivel de optimización como argumento adicional:
+
+```bash
+python run.py test/archivo.bminor --O0   # sin optimización (por defecto)
+python run.py test/archivo.bminor --O1   # optimización local simple
+python run.py test/archivo.bminor --O2   # optimización local + eliminación de muertos
+```
+
+También se puede aplicar a todos los archivos de la carpeta `test/`:
+
+```bash
+python run.py --O1
+python run.py --O2
+```
+
+La IR resultante se guarda en `output/ir/ir_<nombre>_-O<nivel>.txt`.
 
 ---
 
@@ -101,9 +121,99 @@ Recorre el AST con el patrón Visitor e implementa cuatro fases:
 | **Fase 3** | Anotación de tipos, validación de operadores y asignaciones |
 | **Fase 4** | Validación de llamadas a funciones, retornos, break y continue |
 
-### 4. Documentacion de ejemplo para simplificacion del patron visitor
+### 4. Generación de IR
+Produce una representación intermedia de tres direcciones a partir del AST verificado. Las instrucciones usan registros temporales (`R1`, `R2`, …) y etiquetas (`Lthen1`, `Lend2`, …).
+
+### 5. Optimización de IR
+Aplica transformaciones sobre la IR según el nivel indicado. Ver sección [Optimización de IR](#optimización-de-ir) más abajo.
+
+### 6. Documentacion de ejemplo para simplificacion del patron visitor
 - https://refactoring.guru/es/design-patterns/visitor-double-dispatch
 - https://coderkarl.wordpress.com/2012/02/29/simplifying-the-visitor-pattern-with-the-dynamic-keyword/
+
+---
+
+## Optimización de IR
+
+El optimizador actúa sobre la IR generada antes de interpretar el programa. Cada nivel incluye todas las transformaciones del nivel anterior.
+
+### -O0 — Sin optimización (por defecto)
+
+La IR se conserva exactamente como la produce el generador. Útil para depuración y como referencia de comparación.
+
+### -O1 — Optimización local simple
+
+Recorre las instrucciones de cada función y aplica las siguientes transformaciones:
+
+**Constant folding** — Evalúa en tiempo de compilación operaciones cuyos dos operandos son literales conocidos, reemplazando la instrucción por un `MOVI` o `MOVF` con el resultado.
+
+```
+MOVI 3, R1
+MOVI 4, R2
+MULI R1, R2, R3   →   MOVI 12, R3
+```
+
+Operaciones soportadas: `ADDI`, `SUBI`, `MULI`, `DIVI`, `ADDF`, `SUBF`, `MULF`, `DIVF`, `AND`, `OR`, `XOR`. La división por cero nunca se optimiza.
+
+**Simplificación algebraica** — Aplica identidades matemáticas cuando al menos un operando tiene valor constante conocido:
+
+| Patrón | Resultado |
+|--------|-----------|
+| `x + 0` | `x` |
+| `0 + x` | `x` |
+| `x - 0` | `x` |
+| `x * 1` | `x` |
+| `1 * x` | `x` |
+| `x * 0` | `0` |
+| `0 * x` | `0` |
+| `x / 1` | `x` |
+
+**Comparaciones constantes** — Si ambos operandos de una comparación (`CMPI`, `CMPF`, `CMPB`) son constantes, la reemplaza por `MOVI 1` o `MOVI 0`.
+
+```
+MOVI 3, R1
+MOVI 10, R2
+CMPI <, R1, R2, R3   →   MOVI 1, R3
+```
+
+**Simplificación de ramas condicionales** — Si la condición de un `CBRANCH` es un valor constante conocido, lo convierte en un `BRANCH` incondicional hacia la rama correcta.
+
+```
+CBRANCH R3, Lthen1, Lelse2   →   BRANCH Lthen1   (si R3 = 1)
+```
+
+**Eliminación de código inalcanzable** — Descarta todas las instrucciones que aparecen después de un `BRANCH` o `RET` hasta el siguiente `LABEL`, ya que nunca pueden ejecutarse.
+
+```
+BRANCH Lthen1
+PRINTI R9          ← eliminado (inalcanzable)
+LABEL Lthen1
+```
+
+**Eliminación de saltos redundantes** — Si un `BRANCH Lx` va seguido inmediatamente de `LABEL Lx`, el salto no tiene efecto y se elimina.
+
+```
+BRANCH Lend3
+LABEL Lend3        →   LABEL Lend3
+```
+
+### -O2 — Optimización local con eliminación de temporales muertos
+
+Incluye todo lo de `-O1` y agrega:
+
+**Eliminación de temporales muertos** — Recorre las instrucciones en orden inverso. Si una instrucción define un registro temporal `Rk` que nunca se usa en ninguna instrucción posterior, y no tiene efectos laterales, se elimina.
+
+```
+MOVI 2, R1         ← eliminado: R1 no se usa después del folding
+MOVI 3, R2         ← eliminado: R2 no se usa después del folding
+MOVI 4, R3         ← eliminado: R3 no se usa después del folding
+MOVI 12, R4        ← eliminado: R4 fue resultado intermedio, ya no se referencia
+MOVI 14, R5        ← se conserva: R5 → STOREI R5, a
+```
+
+Las instrucciones con efectos laterales (`STORE`, `PRINT`, `CALL`, `BRANCH`, `CBRANCH`, `RET`, `LABEL`) **nunca se eliminan**, independientemente de si su resultado se usa o no.
+
+> **Nota:** El optimizador trabaja localmente dentro de cada función. No realiza análisis entre variables en memoria (`STORE`/`LOAD`), por lo que operaciones como `b = a + 0` donde `a` viene de un `LOADI` no se simplifican aunque el valor de `a` sea conocido en tiempo de compilación. Esa capacidad correspondería a un nivel `-O3` con análisis de flujo de datos.
 
 ---
 
@@ -116,6 +226,7 @@ Por cada archivo procesado **sin errores sintácticos** se generan:
 | `output/console_output/` | `salida_<nombre>.txt` | AST en texto plano y resultado del análisis semántico |
 | `output/graphviz_tree/`  | `ast_<nombre>.dot`    | Grafo AST en formato DOT |
 | `output/rich_tree/`      | `rich_<nombre>.txt`   | Árbol AST visual generado con Rich |
+| `output/ir/`             | `ir_<nombre>_-O<n>.txt` | IR generada con el nivel de optimización aplicado |
 
 Los archivos con errores sintácticos solo generan `salida_<nombre>.txt` con el mensaje de error.
 
