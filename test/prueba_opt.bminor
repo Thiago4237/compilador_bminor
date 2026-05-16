@@ -1,0 +1,30 @@
+main: function integer () = {
+
+    /* --- Constant folding puro --- */
+    a: integer = 2 + 3 * 4;        /* 3*4=12, 2+12=14                  */
+    b: integer = 10 - 2 * 3;       /* 2*3=6,  10-6=4                   */
+    c: integer = 100 / 4;          /* 100/4=25                         */
+
+    /* --- Simplificacion algebraica --- */
+    d: integer = a + 0;            /* x+0  (a viene de LOADI)          */
+    e: integer = b * 1;            /* x*1  (b viene de LOADI)          */
+    f: integer = c - 0;            /* x-0  (c viene de LOADI)          */
+
+    /* --- Temporal muerto (solo O2 lo elimina) --- */
+    dead: integer = 7 * 8;         /* 56, nunca se usa -> muerto en O2 */
+
+    /* --- Comparacion constante + rama constante --- */
+    if (3 < 10) {
+        print a;                   /* rama siempre tomada              */
+    } else {
+        print 999;                 /* inalcanzable tras O1             */
+    }
+
+    /* --- Otro temporal muerto --- */
+    unused: integer = 1 + 1;       /* 2, nunca se usa -> muerto en O2  */
+
+    print b;
+    print c;
+
+    return 0;
+}
