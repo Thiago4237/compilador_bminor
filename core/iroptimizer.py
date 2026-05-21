@@ -70,15 +70,70 @@ class IROptimizer:
     # ===================================================
 
     def _constant_fold_and_simplify(self, instructions: list[Instruction]) -> list[Instruction]:
-        const: dict[str, Any] = {}
+        reg_const: dict[str, Any] = {}
+        reg_copy: dict[str, str] = {}
+        mem_const: dict[str, Any] = {}
+        
         out: list[Instruction] = []
 
         for inst in instructions:
             op = inst[0]
 
-            # MOV literal → registrar valor conocido
-            if op in {"MOVI", "MOVF", "MOVB"} and len(inst) == 3:
-                const[inst[2]] = inst[1]
+            # LOAD desde memoria
+            if op.startswith("LOAD") and len(inst) == 3:
+                var, dst = inst[1], inst[2]
+                if var in mem_const:
+                    # Propagamos el valor constante desde memoria
+                    value = mem_const[var]
+                    mov_op = "MOVF" if isinstance(value, float) else "MOVI"
+                    out.append((mov_op, value, dst))
+                    reg_const[dst] = value
+                    reg_copy.pop(dst, None)
+                    continue
+
+
+            # MOV literal (MOVI, MOVF, MOVB)
+            if op in {"MOVI", "MOVF", "MOVB", "MOV"} and len(inst) == 3:   
+                src, dst = inst[1], inst[2]
+
+                if not isinstance(src, str) or not src.startswith("R"):
+                    reg_const[dst] = src
+                    reg_copy.pop(dst, None)
+                    out.append(inst)
+                    continue
+
+                # MOV entre registros -> propagación
+                if src in reg_const:
+                    value = reg_const[src]
+                    mov_op = "MOVF" if isinstance(value, float) else "MOVI"
+                    out.append((mov_op, value, dst))
+                    reg_const[dst] = value
+                    reg_copy.pop(dst, None)
+                    continue
+
+                elif src in reg_copy:
+                    # copia transitiva (R3 -> R1)
+                    out.append((op, reg_copy[src], dst))
+                    reg_copy[dst] = reg_copy[src]
+                    reg_const.pop(dst, None)
+                    continue
+
+                else:
+                    # Copia simple (sin valor constante conocido)
+                    reg_copy[dst] = src
+                    reg_const.pop(dst, None)
+                    out.append(inst)
+                    continue
+
+            # STORE a memoria
+            if op.startswith("STORE") and len(inst) == 3:
+                src, var = inst[1], inst[2]
+                # Si el valor proviene de un registro con valor conocido
+                value = reg_const.get(src, None)
+                if value is not None:
+                    mem_const[var] = value
+                else:
+                    mem_const.pop(var, None)  # invalidamos si no sabemos el valor
                 out.append(inst)
                 continue
 
@@ -86,56 +141,60 @@ class IROptimizer:
             if op in {"ADDI", "SUBI", "MULI", "DIVI",
                       "ADDF", "SUBF", "MULF", "DIVF",
                       "AND",  "OR",   "XOR"} and len(inst) == 4:
+                
                 a, b, dst = inst[1], inst[2], inst[3]
-                va = const.get(a) if isinstance(a, str) else a
-                vb = const.get(b) if isinstance(b, str) else b
+
+                va = reg_const.get(a) if isinstance(a, str) else a
+                vb = reg_const.get(b) if isinstance(b, str) else b
 
                 # Constant folding completo
                 if va is not None and vb is not None:
                     if op in {"DIVI", "DIVF"} and vb == 0:
-                        const.pop(dst, None)
+                        reg_const.pop(dst, None)
                         out.append(inst)
                         continue
                     result = self._eval_arith(op, va, vb)
                     mov = "MOVF" if isinstance(result, float) else "MOVI"
                     out.append((mov, result, dst))
-                    const[dst] = result
+                    reg_const[dst] = result
                     continue
 
                 # Simplificación algebraica (un operando conocido)
-                simplified = self._algebraic_simplify(op, a, b, dst, const)
+                simplified = self._algebraic_simplify(op, a, b, dst, reg_const)
                 if simplified is not None:
                     out.append(simplified)
                     if simplified[0] in {"MOVI", "MOVF"} and len(simplified) == 3:
-                        const[dst] = simplified[1]
+                        reg_const[dst] = simplified[1]
+                        reg_copy.pop(dst, None)
                     else:
-                        const.pop(dst, None)
+                        reg_const.pop(dst, None)
                     continue
 
-                const.pop(dst, None)
+                reg_const.pop(dst, None)
+                reg_copy.pop(dst, None)
                 out.append(inst)
                 continue
 
             # Comparaciones
             if op in {"CMPI", "CMPF", "CMPB"} and len(inst) == 5:
                 cmp_op, a, b, dst = inst[1], inst[2], inst[3], inst[4]
-                va = const.get(a) if isinstance(a, str) else a
-                vb = const.get(b) if isinstance(b, str) else b
+                va = reg_const.get(a) if isinstance(a, str) else a
+                vb = reg_const.get(b) if isinstance(b, str) else b
 
                 if va is not None and vb is not None:
                     result = 1 if self._eval_cmp(cmp_op, va, vb) else 0
                     out.append(("MOVI", result, dst))
-                    const[dst] = result
+                    reg_const[dst] = result
                     continue
 
-                const.pop(dst, None)
+                reg_const.pop(dst, None)
                 out.append(inst)
                 continue
 
             # CBRANCH con condición constante → BRANCH directo
             if op == "CBRANCH" and len(inst) == 4:
                 test, true_lbl, false_lbl = inst[1], inst[2], inst[3]
-                vtest = const.get(test) if isinstance(test, str) else test
+                vtest = reg_const.get(test) if isinstance(test, str) else test
                 if vtest is not None:
                     out.append(("BRANCH", true_lbl if vtest else false_lbl))
                     continue
@@ -144,7 +203,7 @@ class IROptimizer:
 
             # Instrucción genérica: invalidar registro destino
             if len(inst) >= 2 and isinstance(inst[-1], str) and inst[-1].startswith("R"):
-                const.pop(inst[-1], None)
+                reg_const.pop(inst[-1], None)
 
             out.append(inst)
 
