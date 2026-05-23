@@ -75,14 +75,23 @@ class IROptimizer:
         mem_const: dict[str, Any] = {}
         
         out: list[Instruction] = []
+        after_label = False
 
         for inst in instructions:
             op = inst[0]
 
+            # Limpieza al encontrar un LABEL
+            if op == "LABEL":
+                reg_const.clear()
+                reg_copy.clear()
+                after_label = True
+                out.append(inst)
+                continue
+
             # LOAD desde memoria
             if op.startswith("LOAD") and len(inst) == 3:
                 var, dst = inst[1], inst[2]
-                if var in mem_const:
+                if not after_label and var in mem_const:
                     # Propagamos el valor constante desde memoria
                     value = mem_const[var]
                     mov_op = "MOVF" if isinstance(value, float) else "MOVI"
@@ -144,6 +153,9 @@ class IROptimizer:
                 
                 a, b, dst = inst[1], inst[2], inst[3]
 
+                a = reg_copy.get(a, a)
+                b = reg_copy.get(b, b)
+
                 va = reg_const.get(a) if isinstance(a, str) else a
                 vb = reg_const.get(b) if isinstance(b, str) else b
 
@@ -178,6 +190,10 @@ class IROptimizer:
             # Comparaciones
             if op in {"CMPI", "CMPF", "CMPB"} and len(inst) == 5:
                 cmp_op, a, b, dst = inst[1], inst[2], inst[3], inst[4]
+
+                a = reg_copy.get(a, a)
+                b = reg_copy.get(b, b)
+
                 va = reg_const.get(a) if isinstance(a, str) else a
                 vb = reg_const.get(b) if isinstance(b, str) else b
 
@@ -202,8 +218,10 @@ class IROptimizer:
                 continue
 
             # Instrucción genérica: invalidar registro destino
-            if len(inst) >= 2 and isinstance(inst[-1], str) and inst[-1].startswith("R"):
-                reg_const.pop(inst[-1], None)
+            dst = self._defined_temp(inst)
+            if dst is not None:
+                reg_const.pop(dst, None)
+                reg_copy.pop(dst, None)
 
             out.append(inst)
 
